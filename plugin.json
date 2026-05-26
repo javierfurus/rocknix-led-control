@@ -1,0 +1,11 @@
+{
+  "name": "Rocknix LED Control",
+  "author": "Javier Furus",
+  "flags": ["root"],
+  "api_version": 1,
+  "publish": {
+    "tags": ["hardware", "led", "retroid", "rp5", "rocknix"],
+    "description": "Control your Rocknix based device's analog stick LEDs: on/off, brightness, RGB color, and independent left/right control.",
+    "image": ""
+  }
+}

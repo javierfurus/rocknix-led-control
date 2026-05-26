@@ -31,6 +31,7 @@ mkdirSync(stageDir, { recursive: true });
 for (const entry of [
   "dist",
   "main.py",
+  "backend.py",
   "plugin.json",
   "package.json",
   "README.md",

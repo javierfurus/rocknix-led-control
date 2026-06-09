@@ -10,8 +10,7 @@ A Decky plugin for controlling the Retroid Pocket 5's analog stick LEDs.
 - 9 built-in color presets (White, Red, Orange, Yellow, Green, Cyan, Blue, Purple, Pink)
 - Custom presets — save the current color/brightness as a named preset,
   re-apply with one tap, persisted across reboots
-- Independent left/right stick control with a Sync toggle (per-side colors and
-  per-side brightness when sysfs is available)
+- Independent left/right stick control with a Sync toggle (per-side colors)
 - Live color preview swatches
 - Persistent state across plugin reloads and reboots
   (stored under Decky's plugin settings dir)
@@ -20,29 +19,22 @@ A Decky plugin for controlling the Retroid Pocket 5's analog stick LEDs.
 
 Verified against the ROCKNIX SM8250 quirk scripts.
 
-The backend tries three control paths:
+The backend relies exclusively on ROCKNIX tooling:
 
-1. **`/usr/bin/analog_sticks_ledcontrol`** (ROCKNIX helper).
-   Verified signature:
-   ```
-   analog_sticks_ledcontrol <brightness> <Rr> <Rg> <Rb> <Lr> <Lg> <Lb>
-   ```
-   Note: **right side first, then left**. Brightness is shared between sticks;
-   colors can differ per side. Used when both sides have the same brightness.
-2. **Direct sysfs writes** as fallback / for independent brightness:
-   - `/sys/devices/platform/multi-ledl*/leds/rgb:l*/brightness`
-   - `/sys/devices/platform/multi-ledr*/leds/rgb:r*/brightness`
-   - `/sys/devices/platform/multi-ledl*/leds/rgb:l*/multi_intensity`
-   - `/sys/devices/platform/multi-ledr*/leds/rgb:r*/multi_intensity`
+- **ON:** `/usr/bin/analog_sticks_ledcontrol <brightness> <Rr> <Rg> <Rb> <Lr> <Lg> <Lb>`
+  Note: **right side first, then left**. Brightness is shared between sticks;
+  colors can differ per side.
+- **OFF:** `/usr/bin/ledcontrol off`
 
-Sysfs is the only path that supports independent brightness per side.
+LED state is also written to `/storage/.config/system/configs/system.cfg`
+(via `set_setting`) so that the wake-from-sleep restore scripts pick up the
+plugin's values instead of reverting to the ES-DE defaults.
 
 ## State caching
 
-Because sysfs nodes report 0 brightness when LEDs are off, the previous color
-would be lost on every off/on cycle. To work around this, the backend caches
-the last non-zero color and brightness (per side) in a JSON file, which is
-restored on re-enable and on plugin reload.
+ROCKNIX tooling does not expose current LED state. The backend caches the last
+non-zero color and brightness (per side) in a JSON file, which is restored on
+re-enable and on plugin reload.
 
 ## Build
 

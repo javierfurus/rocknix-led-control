@@ -10,7 +10,7 @@ import {
   staticClasses,
 } from "@decky/ui";
 import { callable, definePlugin, toaster } from "@decky/api";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { FaLightbulb } from "react-icons/fa";
 
 // ----- Types -----------------------------------------------------------------
@@ -26,7 +26,6 @@ type LedState = {
   right: Side;
   has_helper?: boolean;
   has_ledcontrol?: boolean;
-  sysfs_detected?: boolean;
 };
 
 type Capabilities = {
@@ -34,7 +33,6 @@ type Capabilities = {
   supports_split: boolean;
   has_helper: boolean;
   has_ledcontrol: boolean;
-  sysfs_detected: boolean;
 };
 
 type CustomPreset = {
@@ -84,14 +82,10 @@ const BUILTIN_PRESETS: BuiltinPreset[] = [
 
 // ----- Helpers ---------------------------------------------------------------
 
-const previewBar = (s: Side, brightness = 255): React.CSSProperties => {
-  const factor = brightness / 255;
-  const r = Math.round(s.r * factor);
-  const g = Math.round(s.g * factor);
-  const b = Math.round(s.b * factor);
+const previewBar = (s: Side): React.CSSProperties => {
   return {
-    background: `rgb(${r}, ${g}, ${b})`,
-    width: "100%",
+    background: `rgb(${s.r}, ${s.g}, ${s.b})`,
+    width: "40px",
     height: "12px",
     borderRadius: "4px",
     border: "1px solid rgba(255,255,255,0.15)",
@@ -103,7 +97,7 @@ const Swatch = ({ r, g, b }: { r: number; g: number; b: number }) => (
   <div
     style={{
       display: "inline-block",
-      width: "14px",
+      width: "20px",
       height: "14px",
       borderRadius: "3px",
       background: `rgb(${r}, ${g}, ${b})`,
@@ -119,7 +113,7 @@ const SplitSwatch = ({ left, right }: { left: Side; right: Side }) => (
   <div
     style={{
       display: "inline-block",
-      width: "14px",
+      width: "20px",
       height: "14px",
       borderRadius: "3px",
       background: `linear-gradient(90deg,
@@ -144,8 +138,6 @@ function Content() {
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [busy, setBusy] = useState(false);
   const [customs, setCustoms] = useState<CustomPreset[]>([]);
-
-  const applyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -180,43 +172,24 @@ function Content() {
   }, [refresh]);
 
   const apply = useCallback(
-    async (
-      nextEnabled: boolean,
-      nextLeft: Side,
-      nextRight: Side,
-      nextSync: boolean,
-    ) => {
-      setBusy(true);
-      try {
-        const res = await setSides(nextEnabled, nextLeft, nextRight, nextSync);
-        if (!res?.ok) {
-          toaster.toast({ title: "RP5 LED", body: "Failed to update LEDs" });
-        }
-      } catch (err) {
-        console.error("[rp5-led] apply failed", err);
-        toaster.toast({ title: "RP5 LED", body: "Plugin call failed" });
-      } finally {
-        setBusy(false);
-      }
-    },
-    [],
-  );
-
-  const queueApply = useCallback(
     (
       nextEnabled: boolean,
       nextLeft: Side,
       nextRight: Side,
       nextSync: boolean,
     ) => {
-      if (applyTimer.current) {
-        clearTimeout(applyTimer.current);
-      }
-      applyTimer.current = setTimeout(() => {
-        apply(nextEnabled, nextLeft, nextRight, nextSync);
-      }, 80);
+      setSides(nextEnabled, nextLeft, nextRight, nextSync)
+        .then((res) => {
+          if (!res?.ok) {
+            toaster.toast({ title: "RP5 LED", body: "Failed to update LEDs" });
+          }
+        })
+        .catch((err) => {
+          console.error("[rp5-led] apply failed", err);
+          toaster.toast({ title: "RP5 LED", body: "Plugin call failed" });
+        });
     },
-    [apply],
+    [],
   );
 
   // ---- side mutators ----
@@ -224,26 +197,20 @@ function Content() {
   const updateLeft = (patch: Partial<Side>) => {
     const nextLeft = { ...left, ...patch };
     if (sync) {
-      const nextRight = { ...right, ...patch };
       setLeft(nextLeft);
-      setRight(nextRight);
-      queueApply(enabled, nextLeft, nextRight, sync);
+      setRight({ ...right, ...patch });
     } else {
       setLeft(nextLeft);
-      queueApply(enabled, nextLeft, right, sync);
     }
   };
 
   const updateRight = (patch: Partial<Side>) => {
     const nextRight = { ...right, ...patch };
     if (sync) {
-      const nextLeft = { ...left, ...patch };
-      setLeft(nextLeft);
+      setLeft({ ...left, ...patch });
       setRight(nextRight);
-      queueApply(enabled, nextLeft, nextRight, sync);
     } else {
       setRight(nextRight);
-      queueApply(enabled, left, nextRight, sync);
     }
   };
 
@@ -347,7 +314,7 @@ function Content() {
             description={
               supportsSplit
                 ? "Mirror both sticks. Turn off for independent control."
-                : "Independent L/R requires sysfs access."
+                : "Independent L/R requires the ROCKNIX helper."
             }
             checked={sync}
             disabled={busy || !supportsSplit}
@@ -431,7 +398,7 @@ function Content() {
       <PanelSection title={sync ? "Both Sticks" : "Left Stick"}>
         <PanelSectionRow>
           <Field label="Preview" bottomSeparator="none">
-            <div style={previewBar(left, left.brightness)} />
+            <div style={previewBar(left)} />
           </Field>
         </PanelSectionRow>
         <PanelSectionRow>
@@ -480,7 +447,7 @@ function Content() {
         <PanelSection title="Right Stick">
           <PanelSectionRow>
             <Field label="Preview" bottomSeparator="none">
-              <div style={previewBar(right, right.brightness)} />
+              <div style={previewBar(right)} />
             </Field>
           </PanelSectionRow>
           <PanelSectionRow>
@@ -525,6 +492,17 @@ function Content() {
           </PanelSectionRow>
         </PanelSection>
       )}
+
+      <PanelSection>
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => apply(enabled, left, right, sync)}
+          >
+            Save
+          </ButtonItem>
+        </PanelSectionRow>
+      </PanelSection>
     </>
   );
 }

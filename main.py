@@ -11,7 +11,7 @@ _PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 if _PLUGIN_DIR not in sys.path:
     sys.path.insert(0, _PLUGIN_DIR)
 
-from backend import LEDController  # noqa: E402
+from backend import LEDController
 
 
 class Plugin:
@@ -50,14 +50,16 @@ class Plugin:
     async def set_color(self, r: int, g: int, b: int) -> Dict:
         return self.led.set_color(r, g, b)
 
-    async def set_all(self, enabled: bool, brightness: int,
-                      r: int, g: int, b: int) -> Dict:
+    async def set_all(
+        self, enabled: bool, brightness: int, r: int, g: int, b: int
+    ) -> Dict:
         return self.led.set_all(enabled, brightness, r, g, b)
 
     # --- independent left/right ---
 
-    async def set_sides(self, enabled: bool, left: Dict, right: Dict,
-                        sync: bool = False) -> Dict:
+    async def set_sides(
+        self, enabled: bool, left: Dict, right: Dict, sync: bool = False
+    ) -> Dict:
         return self.led.set_sides(enabled, left, right, sync)
 
     # --- effects ---

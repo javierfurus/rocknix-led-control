@@ -1,6 +1,6 @@
 {
   "name": "rocknix-led-control",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Decky plugin to control the analog stick LEDS on various Rocknix devices",
   "type": "module",
   "scripts": {

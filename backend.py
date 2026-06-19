@@ -55,10 +55,16 @@ class LEDController:
             self.STATE_FILE,
             self.PRESETS_FILE,
         )
+        self._diag_env()
 
         # In-memory cache, hydrated from disk if present.
         self._cache: Dict = self._load_cache()
         self._presets: List[Dict] = self._load_presets()
+
+    # ----------------------------------------------------------------- diag --
+
+    def _diag_env(self) -> None:
+        log.info("device ids resolved: %s", self._device_ids())
 
     # ---------------------------------------------------------------- cache --
 
@@ -89,9 +95,73 @@ class LEDController:
         except Exception:
             pass
 
+    def _device_ids(self) -> dict:
+        cached = getattr(self, "_device_ids_cache", None)
+        if cached is not None:
+            return cached
+        ids = {}
+        PLAT = "/usr/lib/autostart/quirks/platforms"
+
+        def _read_compat_candidates():
+            try:
+                with open("/sys/firmware/devicetree/base/compatible", "rb") as f:
+                    toks = [t for t in f.read().split(b"\x00") if t]
+                out = []
+                for t in toks:
+                    s = t.decode("utf-8", "ignore").strip()
+                    if not s:
+                        continue
+                    out.append(s.split(",")[-1].strip().upper())
+                return out
+            except Exception:
+                return []
+
+        hw = (os.environ.get("HW_DEVICE") or "").strip()
+        if not hw:
+            try:
+                with open("/etc/os-release", "r") as f:
+                    for line in f:
+                        if line.startswith("HW_DEVICE="):
+                            hw = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            break
+            except Exception as e:
+                log.warning("device id: os-release read failed: %s", e)
+        if not hw:
+            cands = _read_compat_candidates()
+            for c in cands:
+                if os.path.isfile(f"{PLAT}/{c}/bin/analog_sticks_ledcontrol"):
+                    hw = c
+                    break
+            if not hw:
+                for c in cands:
+                    if os.path.isdir(f"{PLAT}/{c}"):
+                        hw = c
+                        break
+            log.debug("device id: compat candidates=%s chosen=%r", cands, hw)
+
+        quirk = (os.environ.get("QUIRK_DEVICE") or "").strip()
+        if not quirk:
+            try:
+                with open("/sys/firmware/devicetree/base/model", "rb") as f:
+                    quirk = f.read().split(b"\x00", 1)[0].decode("utf-8", "ignore").strip().replace("/", "-")
+            except Exception:
+                quirk = ""
+        if not quirk:
+            quirk = hw or "unknown"
+
+        if hw:
+            ids["HW_DEVICE"] = hw
+        ids["QUIRK_DEVICE"] = quirk
+        self._device_ids_cache = ids
+        return ids
+
     def _clean_env(self) -> dict:
         env = os.environ.copy()
         env["LD_LIBRARY_PATH"] = ""
+        try:
+            env.update(self._device_ids())
+        except Exception as e:
+            log.warning("device id injection failed: %s", e)
         return env
 
     # --------------------------------------------------------- persist config
@@ -117,7 +187,7 @@ class LEDController:
             else:
                 cmd = f'. /etc/profile.d/001-functions; set_setting led.color "off"'
             subprocess.run(
-                ["sh", "-c", cmd], check=False, capture_output=True, timeout=5, env=self._clean_env()
+                ["sh", "-c", cmd], check=False, capture_output=True, stdin=subprocess.DEVNULL, timeout=5, env=self._clean_env()
             )
         except Exception as e:
             log.warning("_persist_rocknix_cfg failed: %s", e)
@@ -255,6 +325,7 @@ class LEDController:
                 check=False,
                 capture_output=True,
                 text=True,
+                stdin=subprocess.DEVNULL,
                 timeout=5,
                 env=self._clean_env(),
             )
@@ -281,6 +352,7 @@ class LEDController:
                 check=True,
                 capture_output=True,
                 text=True,
+                stdin=subprocess.DEVNULL,
                 env=self._clean_env(),
             )
             return True
@@ -296,6 +368,7 @@ class LEDController:
             # but the helper handles restoring the previous state itself.
             subprocess.Popen(
                 [self.LEDCONTROL, "rainbow"],
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 env=self._clean_env(),
@@ -342,8 +415,9 @@ class LEDController:
         # OFF path
         if not enabled:
             log.info("apply OFF path")
-            method = None
-            if self._call_ledcontrol_off():
+            if self._call_helper(0, 0, 0, 0, 0, 0, 0):
+                method = "helper"
+            elif self._call_ledcontrol_off():
                 method = "ledcontrol"
             else:
                 log.error("no LED off path available")
